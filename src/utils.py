@@ -1,29 +1,27 @@
 import os
-import cv2
 import numpy as np
-
 import face_recognition as fr
-from keras.models import load_model
 
-from config import FACES_FOLDER, EMOTIONS
+from numba import jit
+from config import (
+    FACES_FOLDER,
+    FACE_LOCATION_MODEL,
+    FACE_ENCODING_MODEL,
+    FACE_COMPARE_MINTOL,
+    FACE_COMPARE_MAXTOL,
+    FACE_DOWNSCALE_IMAGE
+)
 
 
 FACES_KNOWS_ENCODE = []
 FACES_KNOWS_NAME = []
 
-HAAR_CASCADES = [
-    'haarcascade_frontalface_default.xml',
-    'haarcascade_profileface.xml',
-    # 'haarcascade_frontalcatface_extended.xml',
-    # 'haarcascade_frontalface_alt.xml',
-    # 'haarcascade_frontalface_alt_tree.xml',
-]
-
-FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + HAAR_CASCADES[0])
-FACE_PROFILE = cv2.CascadeClassifier(cv2.data.haarcascades + HAAR_CASCADES[1])
-
 
 def load_images():
+    """
+    Load images in 'FACES_FOLDER' directory, and update 'FACES_KNOWS_ENCODE', 'FACES_KNOWS_NAME'
+    global variables with the faces in these images
+    """
     global FACES_KNOWS_ENCODE, FACES_KNOWS_NAME
 
     FACES_KNOWS_ENCODE = []
@@ -39,72 +37,65 @@ def load_images():
     FACES_KNOWS_NAME = np.array(FACES_KNOWS_NAME)
 
 
-def preprocessing(img, gray=False):
-    img = cv2.resize(img, (0, 0), fx=0.25, fy=0.25)  # for faster face recognition processing
-    # img = img[:, :, ::-1]  # bgr to rgb
+@jit(nopython=True)
+def preprocessing(img, gray=False, from_opencv=False):
+    # img = cv2.resize(img, (0, 0), fx=0.25, fy=0.25)
+    h = img.shape[0]
+    w = img.shape[1]
+    h_output_size = h * FACE_DOWNSCALE_IMAGE
+    w_output_size = w * FACE_DOWNSCALE_IMAGE
+
+    h_bin_size = h // h_output_size
+    w_bin_size = w // w_output_size
+
+    img = img.reshape((3,
+                       h_output_size, h_bin_size,
+                       w_output_size, w_bin_size)).max(4).max(2)
+    if from_opencv:
+        img = img[:, :, ::-1]  # bgr to rgb
     if gray:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        rgb_weights = [0.2989, 0.5870, 0.1140]
+        img = np.dot(img[..., :3], rgb_weights)
     return img
 
 
-def detect_faces(img):
-    """
-    Detectar caras en un frame
-    """
-    if img is None:
-        return
-
-    img = preprocessing(img, gray=True)
-
-    faces_front = FACE_CASCADE.detectMultiScale(img, 1.1, 4)
-    faces_profile = FACE_PROFILE.detectMultiScale(img, 1.1, 4)
-
-    rectangles = []
-    for (x, y, w, h) in faces_front:
-        for (x_, y_, w_, h_) in faces_profile:
-            # Evitar superposicion de rectangulos 10% cercanos
-            if (abs(x - x_)/img.shape[1]/100) < 10 and (abs(y - y_)/img.shape[1]/100) < 10:
-                continue
-            rectangles.append((x_, y_, w_, h_))
-        rectangles.append((x, y, w, h))
-
-    result = []
-    for (x, y, w, h) in rectangles:
-        # faces_detected.append(img)  # [y:y+h, x:x+w,:]) # pasar solo la cara o toda la imagen?
-        # cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
-        result.append((img, (x, y, w, h)))
-
-    return result
-
-
+@jit(nopython=True)
 def who_is(img):
     """
-    Analiza cada cara en la cola faces_detected y las compara contra las caras que ya vio, si es nueva la guarda
+    Parse each face in the 'img' and compare them against the faces in 'FACES_KNOWS_ENCODE'
+    :param img: The image that contains zero, one or more faces. Must be numpy array.
+    :return: A list with names, one for each face found in img
     """
-    img = preprocessing(img)
-
-    face_locs = fr.face_locations(img, number_of_times_to_upsample=5)
-    face_encodings = np.array(fr.face_encodings(img, face_locs))
-
     face_names = []
-    for face in face_encodings:
-        matches = fr.compare_faces(FACES_KNOWS_ENCODE, face, tolerance=0.7)
-        name = 'Desconocido'
-        # # If a match was found in known_face_encodings, just use the first one.
-        # if True in matches:
-        #     first_match_index = matches.index(True)
-        #     name = known_face_names[first_match_index]
+    img = preprocessing(img)  # for faster face recognition processing
 
-        face_distances = fr.face_distance(FACES_KNOWS_ENCODE, face_encodings)
-        best_match_index = np.argmin(face_distances)
-        if (True not in matches) and (min(face_distances) < 0.5):
-            name = FACES_KNOWS_NAME[best_match_index]
-        elif matches[best_match_index]:
-            name = FACES_KNOWS_NAME[best_match_index]
+    # Search face in img
+    for n in range(1, 5):
+        face_locs = fr.face_locations(img, number_of_times_to_upsample=n, model=FACE_LOCATION_MODEL)
+        if face_locs:
+            break
+    else:
+        return face_names
 
-        face_names.append(name)
+    face_encodings = np.array(fr.face_encodings(img, known_face_locations=face_locs,
+                                                num_jitters=n, model=FACE_ENCODING_MODEL))  # n from previous for loop
 
-    face_names = list(set(face_names))
+    for face_encoded in face_encodings:
+        for tol in np.arange(FACE_COMPARE_MINTOL, FACE_COMPARE_MAXTOL, 0.1):
+            # Compare with to all faces knows
+            face_distances = fr.face_distance(FACES_KNOWS_ENCODE, np.array([face_encoded]))
+
+            best_match_index = np.argmin(face_distances)
+            if face_distances[best_match_index] <= tol:
+                # Found the person
+                face_names.append({'name': FACES_KNOWS_NAME[best_match_index],
+                                   'confidence': 1-face_distances[best_match_index]})
+                break
+        else:
+            # Didn't seems anybody
+            face_names.append({'name': 'Desconocido',
+                               'confidence': 1})
+
     return face_names
 
 

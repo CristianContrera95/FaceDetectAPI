@@ -1,28 +1,22 @@
 from flask import Flask, Blueprint
 from flask_restful import Api
-from flask_cors import CORS
-
 from routes import urls
 
 
 def index():
+    """Just I like do this"""
     return '<h1>API for FACE DETECTION </h1>'
 
 
-# Create flask web application
-app = Flask(__name__)
+app = Flask(__name__)  # Create flask web application
 
-# cors = CORS(app, resources={r"*": {"origins": "*"}})
+app.config.from_object('config')  # Load settings
 
-app.config.from_object('config')  # load settings
+app.add_url_rule('/', 'index', index)  # Simple greeting in /
 
+app_bp = Blueprint('api', __name__)  # Create access point for api rest
 
-app.add_url_rule('/', 'index', index)  # simple greeting in /
-
-# Create access point for api rest
-app_bp = Blueprint('api', __name__)
-# Create api rest
-api = Api(app_bp)
+api = Api(app_bp)  # Create api rest
 
 # Add urls for api rest
 for url in urls:

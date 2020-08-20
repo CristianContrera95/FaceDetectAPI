@@ -1,8 +1,8 @@
-FROM python:3.8
+FROM python:3.8-alpine
 MAINTAINER CRISTIAN_CONTRERA <cristiancontrera95@gmail.com>
 
-RUN apt-get update
-RUN apt-get install make automake cmake gcc g++ python3-dev -y
+RUN apk update
+RUN apk add make automake cmake gcc g++ python3-dev -y
 WORKDIR /app
 
 COPY requirements.txt ./

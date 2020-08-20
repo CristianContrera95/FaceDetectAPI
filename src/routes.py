@@ -9,7 +9,7 @@ urls = [
     },
     {
         'resource': FaceRegisterView,
-        'path': '/face_register',
+        'path': '/face_register/<string:name>',
         'endpoint': 'face_register',
     }
 ]

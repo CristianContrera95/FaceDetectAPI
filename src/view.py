@@ -1,17 +1,61 @@
 import os
+import numpy as np
+import cv2
 
 from PIL import Image
-import numpy as np
-
 from flask import request
 from flask_restful import Resource
-
 from config import FACES_FOLDER
-from utils import (
-    detect_faces,
-    who_is,
-    load_images,
-)
+from utils import who_is, load_images
+
+
+class FaceRegisterView(Resource):
+
+    def __init__(self):
+        super(FaceRegisterView).__init__()
+
+    def get(self, name=None):
+        images = os.listdir(FACES_FOLDER)
+        return {'images': images}, 200
+
+    def post(self, name=None):
+        a = request
+        if 'image' in request.files.keys():
+            # PostMan mode
+            file = request.files.get('image', None)
+            # name = request.form.get('name', None)
+            ext = file.filename.split('.')[-1]
+            if file and name and (ext in ['jpg', 'jpeg', 'png']):
+                try:
+                    file.save(os.path.join(FACES_FOLDER, name + '.' + ext))
+                except Exception as ex:
+                    return {'error': 'can\'t save new image', 'except': str(ex)}, 400
+            else:
+                return {'error': 'No name received or file not is {jpg, jpeg, png}'}, 400
+        elif request.data:
+            # Python mode
+            try:
+                # convert string of image data to uint8
+                nparr = np.frombuffer(request.data, np.uint8)
+                # decode image
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                # name = request.json.get('name', None)
+                if name:
+                    cv2.imwrite(os.path.join(FACES_FOLDER, name + '.' + 'jpg'), img)
+                else:
+                    return {'error': 'No name received'}, 400
+            except Exception as ex:
+                return {'error': 'bad image received', 'except': str(ex)}, 400
+
+        load_images()
+        return {'msg': 'Ok'}, 200
+
+    def delete(self):
+        image = os.path.join(FACES_FOLDER, request.json['image'])
+        if os.path.exists(image):
+            os.remove(image)
+            return {'msg': 'Ok'}, 200
+        return {'msg': 'image not found'}, 400
 
 
 class FaceDetectView(Resource):
@@ -20,44 +64,25 @@ class FaceDetectView(Resource):
         super(FaceDetectView).__init__()
 
     def post(self):
+        img = None
         if 'image' in request.files.keys():
             file = request.files['image']
             if file:
+                # set file point at the begin of file
                 file.seek(0)
+                # read file as numpy array
                 img = np.array(Image.open(file))
-                results = who_is(img)
-                return {'names': results}, 200
-        if 'image' in request.form.keys():
-            pass
-            # img_encoded = request.form['image']
-            # img = np.frombuffer(img_encoded, dtype=np.float64)
-            # results = who_is(img)
-            # return {'names': results}, 200
-        if 'image' in request.json.keys():
-            pass
-            # img_encoded = request.json['image']
-            # img = np.frombuffer(img_encoded, dtype=np.float64)
-            # results = who_is(img)
-            # return {'names': results}, 200
-        return {}, 400
+        elif request.data:
+            try:
+                # convert string of image data to uint8
+                nparr = np.frombuffer(request.data, np.uint8)
+                # decode image
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            except Exception as ex:
+                return {'error': 'bad image received', 'except': str(ex)}, 400
 
-
-class FaceRegisterView(Resource):
-
-    def __init__(self):
-        super(FaceRegisterView).__init__()
-
-    def get(self):
-        images = os.listdir(FACES_FOLDER)
-        return {'images': images}, 200
-
-    def post(self):
-        file = request.files['image']
-        if file:
-            name = request.form['name']
-            ext = file.filename.split('.')[-1]
-            if name is not None:
-                file.save(os.path.join(FACES_FOLDER, name+'.'+ext))
-                load_images()
-                return 200
-        return 400
+        # performance detection
+        if img is not None:
+            results = who_is(img)
+            return {'names': results}, 200
+        return {'error': 'Can\'t get an image from request'}, 400
