@@ -1,8 +1,8 @@
 import os
+import cv2
 import numpy as np
 import face_recognition as fr
 
-from numba import jit
 from config import (
     FACES_FOLDER,
     FACE_LOCATION_MODEL,
@@ -27,7 +27,8 @@ def load_images():
     FACES_KNOWS_ENCODE = []
     FACES_KNOWS_NAME = []
     for file in os.listdir(FACES_FOLDER):
-        for face in fr.face_encodings(fr.load_image_file(os.path.join(FACES_FOLDER, file))):
+        fr_image = fr.load_image_file(os.path.join(FACES_FOLDER, file))
+        for face in fr.face_encodings(fr_image, num_jitters=50, model=FACE_ENCODING_MODEL):
 
             FACES_KNOWS_ENCODE.append(face)
             FACES_KNOWS_NAME.append(file.split('.')[0])
@@ -37,20 +38,18 @@ def load_images():
     FACES_KNOWS_NAME = np.array(FACES_KNOWS_NAME)
 
 
-@jit(nopython=True)
 def preprocessing(img, gray=False, from_opencv=False):
-    # img = cv2.resize(img, (0, 0), fx=0.25, fy=0.25)
-    h = img.shape[0]
-    w = img.shape[1]
-    h_output_size = h * FACE_DOWNSCALE_IMAGE
-    w_output_size = w * FACE_DOWNSCALE_IMAGE
-
-    h_bin_size = h // h_output_size
-    w_bin_size = w // w_output_size
-
-    img = img.reshape((3,
-                       h_output_size, h_bin_size,
-                       w_output_size, w_bin_size)).max(4).max(2)
+    img = cv2.resize(img, (0, 0), fx=FACE_DOWNSCALE_IMAGE, fy=FACE_DOWNSCALE_IMAGE)
+    # h = img.shape[0]
+    # w = img.shape[1]
+    # h_output_size = int(h * FACE_DOWNSCALE_IMAGE)
+    # w_output_size = int(w * FACE_DOWNSCALE_IMAGE)
+    #
+    # h_bin_size = h // h_output_size
+    # w_bin_size = w // w_output_size
+    #
+    # img = img.reshape((h_output_size, h_bin_size,
+    #                    w_output_size, w_bin_size, 3)).max(3).max(1)
     if from_opencv:
         img = img[:, :, ::-1]  # bgr to rgb
     if gray:
@@ -59,7 +58,6 @@ def preprocessing(img, gray=False, from_opencv=False):
     return img
 
 
-@jit(nopython=True)
 def who_is(img):
     """
     Parse each face in the 'img' and compare them against the faces in 'FACES_KNOWS_ENCODE'
@@ -70,6 +68,7 @@ def who_is(img):
     img = preprocessing(img)  # for faster face recognition processing
 
     # Search face in img
+
     for n in range(1, 5):
         face_locs = fr.face_locations(img, number_of_times_to_upsample=n, model=FACE_LOCATION_MODEL)
         if face_locs:
@@ -78,7 +77,8 @@ def who_is(img):
         return face_names
 
     face_encodings = np.array(fr.face_encodings(img, known_face_locations=face_locs,
-                                                num_jitters=n, model=FACE_ENCODING_MODEL))  # n from previous for loop
+                                                num_jitters=10+(2**(n+1)),  # n from previous for loop
+                                                model=FACE_ENCODING_MODEL))
 
     for face_encoded in face_encodings:
         for tol in np.arange(FACE_COMPARE_MINTOL, FACE_COMPARE_MAXTOL, 0.1):

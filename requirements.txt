@@ -1,5 +1,4 @@
 Flask-RESTful
 numpy
 face_recognition
-numba
 opencv-python
