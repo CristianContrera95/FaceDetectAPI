@@ -1,4 +1,4 @@
-NAME_DOCKER=face_recongnition
+NAME_DOCKER=face_recongnition_api
 
 exist_docker=$(docker images | grep $NAME_DOCKER | wc -l)
 if [ $(( $exist_docker )) == 0 ];
@@ -9,5 +9,5 @@ fi
 
 echo "Image ready, starting container.."
 
-docker run --name=$NAME_DOCKER --rm  -p 5000:5000 -it $NAME_DOCKER:v1
+docker run --name=$NAME_DOCKER --rm -e ENVIRONMENT="dev" -p 5000:5000 -it $NAME_DOCKER:v1
 #-v $PWD/src:/app
