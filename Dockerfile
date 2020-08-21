@@ -13,4 +13,6 @@ COPY src/ .
 
 EXPOSE 5000
 
-CMD ["gunicorn", "-w", "4", "run:app"]
+RUN apt-get install ffmpeg libsm6 libxext6 -y
+
+CMD ["python" , "run.py"]
