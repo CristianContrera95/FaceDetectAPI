@@ -8,7 +8,6 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-# Uncomment for production
 COPY src/ .
 
 EXPOSE 5000

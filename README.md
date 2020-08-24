@@ -13,10 +13,17 @@ paquetes que estan en requirements.txt y ejecutar el script:
   python src/run.py
   ```
   
+- Si tienes instalado terraform, despues de compilar docker, puedes usar: 
+  ``` bash
+  terraform init
+  terraform apply
+  ```
+
 ### Usar la API
- - La API tiene dos endpoints:
+ - La API tiene tres endpoints:
    - /face_detect: Recibe una imagen y retorna una json con el nombre de la cara reconocida.
    - /face_register: Recibe una imagen y un json con el nombre de la cara, para guardala.
+   - /face_list: Retorna una lista de la caras guardadas.
 
  - La forma de enviar la imagen a la API es en forma de archivo binario, en python eso seria:
 

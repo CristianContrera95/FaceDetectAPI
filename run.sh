@@ -1,4 +1,4 @@
-NAME_DOCKER=face_recongnition_api
+NAME_DOCKER=face_recognition_api
 
 exist_docker=$(docker images | grep $NAME_DOCKER | wc -l)
 if [ $(( $exist_docker )) == 0 ];
